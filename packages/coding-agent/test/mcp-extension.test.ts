@@ -183,6 +183,37 @@ describe("MCP config", () => {
 		expect(trusted.errors).toContainEqual(expect.stringContaining("autoEnableCodemode must be a boolean"));
 	});
 
+	it("validates maxOutputBytes and reads the top-level value with project precedence", () => {
+		const paths = setup(
+			{
+				maxOutputBytes: 40_000,
+				mcpServers: {
+					large: { command: "x", maxOutputBytes: 100_000 },
+					zero: { command: "x", maxOutputBytes: 0 },
+					fraction: { command: "x", maxOutputBytes: 1.5 },
+				},
+			},
+			{ maxOutputBytes: 60_000, mcpServers: {} },
+		);
+
+		const untrusted = loadMcpConfig({ ...paths, projectTrusted: false });
+		expect(untrusted.maxOutputBytes).toBe(40_000);
+		expect(untrusted.servers.map((server) => [server.name, server.config.maxOutputBytes])).toEqual([
+			["large", 100_000],
+		]);
+		expect(untrusted.errors).toEqual([
+			expect.stringContaining('server "zero": maxOutputBytes must be a positive integer'),
+			expect.stringContaining('server "fraction": maxOutputBytes must be a positive integer'),
+		]);
+		expect(loadMcpConfig({ ...paths, projectTrusted: true }).maxOutputBytes).toBe(60_000);
+
+		// An invalid project value is reported and leaves the global value in place.
+		writeFileSync(join(paths.cwd, ".pi", "mcp.json"), JSON.stringify({ maxOutputBytes: "60000", mcpServers: {} }));
+		const invalid = loadMcpConfig({ ...paths, projectTrusted: true });
+		expect(invalid.maxOutputBytes).toBe(40_000);
+		expect(invalid.errors).toContainEqual(expect.stringContaining("maxOutputBytes must be a positive integer"));
+	});
+
 	it("validates the OAuth callback URL, scope, and client name", () => {
 		const paths = setup(
 			{

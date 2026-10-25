@@ -66,6 +66,7 @@ HTTP servers use `url`, `headers`, and `oauth` (see [Authenticate with OAuth](#a
 Both server types support:
 
 - `timeout`: per-request timeout in seconds (default 60). Progress notifications reset it.
+- `maxOutputBytes`: bytes of text a tool result or resource read passes to the model (see [Tool results](#tool-results)).
 - `enabled: false`: keep the entry without connecting to it.
 - `exposure` and `toolExposure`: control how tools reach the model (see [Control tool exposure](#control-tool-exposure)).
 - `description`: what the server offers, in a sentence. It lists the server in the system prompt (see [Control tool exposure](#control-tool-exposure)), tool search ranks the server's tools by it, and codemode's `describeNamespace()` returns it. Without it, the first line of the server instructions is used once the server connects.
@@ -229,7 +230,25 @@ Tools with `codemode` or `deferred` exposure can be reached through either indir
 
 To keep `codemode` active without MCP servers, add `"defaultTools": ["+codemode"]` to [settings](settings.md#tools). To prevent automatic codemode activation, set `"autoEnableCodemode": false` beside `mcpServers`. A project value overrides the user-level value. Pi warns once when neither `codemode` nor `tool_search` is active and non-direct tools cannot be called.
 
-Text results over 20 KB reach the model with their middle removed around a `…N chars truncated…` marker. The full text is saved to a temporary file named in the result. Codemode scripts receive the complete result and can reduce it before returning output to the model.
+### Tool results
+
+Text results over the output limit reach the model with their middle removed around a `…N chars truncated…` marker. The full text is saved to a temporary file named in the result. The limit, in bytes, is the first of these that is set:
+
+1. `_meta["pi/maxOutputBytes"]` in the tool's `tools/list` entry, set by the server.
+2. `maxOutputBytes` in the server's entry.
+3. `maxOutputBytes` beside `mcpServers`. A project value overrides the user-level value.
+4. Otherwise, 20 KB (20480 bytes).
+
+```json
+{
+  "maxOutputBytes": 51200,
+  "mcpServers": {
+    "docs": { "url": "https://example.com/mcp", "maxOutputBytes": 204800 }
+  }
+}
+```
+
+`read_mcp_resource` and resource listings of one server use steps 2 to 4; listings of every server use steps 3 and 4. Codemode scripts receive the complete result and can reduce it before returning output to the model.
 
 Codemode scripts receive the complete MCP `CallToolResult`, including `content`, `structuredContent`, and `isError`. A result with `isError` resolves inside scripts but is reported as an error for direct calls. `image(result.content[0])` forwards an image block. Server instructions are not part of any tool description; scripts read them with `describeNamespace("mcp__<server>")`, which also returns the server's tool names.
 

@@ -287,6 +287,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 		let overridden: string[] = [];
 		let autoEnableCodemode = true;
+		/** The top-level `maxOutputBytes` of `mcp.json`, for servers without their own. */
+		let maxOutputBytes: number | undefined;
 		/** Whether the "codemode tools unreachable" warning was shown since the session started. */
 		let warnedUnreachable = false;
 		let pending: Promise<unknown> | undefined;
@@ -340,6 +342,12 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 
 		const connections = () => servers.flatMap((server) => (server.connection ? [server.connection] : []));
 		const findServer = (name: string) => servers.find((server) => server.entry.name === name);
+		/**
+		 * Configured `maxOutputBytes` of a server's results: its own, else the top-level one. Results about
+		 * every server (`name` undefined) use the top-level one.
+		 */
+		const serverMaxOutputBytes = (name: string | undefined) =>
+			(name === undefined ? undefined : findServer(name)?.entry.config.maxOutputBytes) ?? maxOutputBytes;
 
 		/** Servers extensions registered, except names `mcp.json` defines, which take precedence. */
 		const registeredServers = (): { servers: McpServer[]; overridden: string[] } => {
@@ -439,6 +447,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 						return client;
 					},
 					readableResources: () => resourceServers().some((current) => current.name === server),
+					maxOutputBytes: () => serverMaxOutputBytes(server),
 				});
 				definitions.set(definition.name, definition);
 				pi.registerTool(definition);
@@ -484,7 +493,11 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			if (next === resourceToolsExposure || (resourceToolsExposure === undefined && next === "hidden")) return;
 			const wasDirect = resourceToolsExposure === "direct";
 			resourceToolsExposure = next;
-			const resourceDefinitions = createMcpResourceToolDefinitions({ exposure: next, servers: resourceServers });
+			const resourceDefinitions = createMcpResourceToolDefinitions({
+				exposure: next,
+				servers: resourceServers,
+				maxOutputBytes: serverMaxOutputBytes,
+			});
 			for (const definition of resourceDefinitions) pi.registerTool(definition);
 			if (wasDirect) {
 				const names = new Set(resourceDefinitions.map((definition) => definition.name));
@@ -1116,6 +1129,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			configErrors = loaded.errors;
 			projectConfig = loaded.projectConfig;
 			autoEnableCodemode = loaded.autoEnableCodemode ?? true;
+			maxOutputBytes = loaded.maxOutputBytes;
 			warnedUnreachable = false;
 			waitedForStartup = false;
 			sessionCwd = ctx.cwd;

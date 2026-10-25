@@ -26,13 +26,16 @@
  * cannot use it, so a repository cannot pick where the credential goes.
  *
  * The top-level `autoEnableCodemode` (default true) activates the codemode tool when a server
- * with `codemode` exposure connects. A project value overrides the global one.
+ * with `codemode` exposure connects. The top-level `maxOutputBytes` (default 20 KiB) limits the
+ * model-facing text of results from servers without their own `maxOutputBytes`. A project value of
+ * either overrides the global one.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import {
+	isMaxOutputBytes,
 	type McpExposure,
 	type McpServerConfig,
 	mcpNamespace,
@@ -67,6 +70,8 @@ export interface LoadedMcpConfig {
 	servers: McpServerEntry[];
 	/** Activate the codemode tool when `codemode` servers connect. Default: true. */
 	autoEnableCodemode?: boolean;
+	/** Bytes of model-facing text of results from servers without their own `maxOutputBytes`. */
+	maxOutputBytes?: number;
 	errors: string[];
 	/** The project `mcp.json` when the project is trusted, where `/mcp` saves project overrides. */
 	projectConfig?: string;
@@ -86,6 +91,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 interface McpConfigState {
 	servers: Map<string, McpServerEntry>;
 	autoEnableCodemode?: boolean;
+	maxOutputBytes?: number;
 	errors: string[];
 }
 
@@ -105,6 +111,8 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 	}
 	if (typeof parsed.autoEnableCodemode === "boolean") state.autoEnableCodemode = parsed.autoEnableCodemode;
 	else if (parsed.autoEnableCodemode !== undefined) errors.push(`${path}: autoEnableCodemode must be a boolean`);
+	if (isMaxOutputBytes(parsed.maxOutputBytes)) state.maxOutputBytes = parsed.maxOutputBytes;
+	else if (parsed.maxOutputBytes !== undefined) errors.push(`${path}: maxOutputBytes must be a positive integer`);
 	for (const [name, value] of Object.entries(parsed.mcpServers ?? {})) {
 		if (scope === "project" && isRecord(value) && isOverride(value)) {
 			const base = servers.get(name);
@@ -151,6 +159,7 @@ export function loadMcpConfig(options: { agentDir: string; cwd: string; projectT
 	return {
 		servers: [...state.servers.values()],
 		...(state.autoEnableCodemode === undefined ? {} : { autoEnableCodemode: state.autoEnableCodemode }),
+		...(state.maxOutputBytes === undefined ? {} : { maxOutputBytes: state.maxOutputBytes }),
 		errors: state.errors,
 		...(projectConfig ? { projectConfig } : {}),
 	};

@@ -306,7 +306,7 @@ A tool's `renderCall` and `renderResult` draw its calls in the interactive trans
 
 ### MCP servers
 
-`pi.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, and `timeout`.
+`pi.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, `timeout`, and `maxOutputBytes`.
 
 ```typescript
 pi.registerMcpServer("jira", { url: "https://mcp.example.com/jira", exposure: "codemode" });

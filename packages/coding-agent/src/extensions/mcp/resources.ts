@@ -179,8 +179,13 @@ async function jsonResult(
 	tool: string,
 	server: string | undefined,
 	payload: Record<string, unknown>,
+	maxOutputBytes: number | undefined,
 ): Promise<{ content: (TextContent | ImageContent)[]; details: McpToolDetails; structuredContent: JsonValue }> {
-	const { content, fullOutputPath } = await limitMcpContent([{ type: "text", text: JSON.stringify(payload) }]);
+	const { content, fullOutputPath } = await limitMcpContent(
+		[{ type: "text", text: JSON.stringify(payload) }],
+		undefined,
+		maxOutputBytes,
+	);
 	return {
 		content,
 		details: { server: server ?? "", tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
@@ -194,6 +199,8 @@ async function jsonResult(
 export function createMcpResourceToolDefinitions(options: {
 	exposure: McpExposure;
 	servers: () => readonly McpResourceServer[];
+	/** The configured `maxOutputBytes` of results about one server, or about every server without one. */
+	maxOutputBytes?: (server: string | undefined) => number | undefined;
 }): ToolDefinition<TSchema, McpToolDetails>[] {
 	const readOnly: ToolAnnotations = { readOnlyHint: true };
 
@@ -270,7 +277,8 @@ export function createMcpResourceToolDefinitions(options: {
 				},
 				(server, requestOptions) => server.allResources(requestOptions),
 			);
-			return jsonResult(LIST_MCP_RESOURCES_TOOL, stringArgument(params, "server"), payload);
+			const serverName = stringArgument(params, "server");
+			return jsonResult(LIST_MCP_RESOURCES_TOOL, serverName, payload, options.maxOutputBytes?.(serverName));
 		},
 	};
 
@@ -294,7 +302,8 @@ export function createMcpResourceToolDefinitions(options: {
 				},
 				(server, requestOptions) => server.allResourceTemplates(requestOptions),
 			);
-			return jsonResult(LIST_MCP_RESOURCE_TEMPLATES_TOOL, stringArgument(params, "server"), payload);
+			const serverName = stringArgument(params, "server");
+			return jsonResult(LIST_MCP_RESOURCE_TEMPLATES_TOOL, serverName, payload, options.maxOutputBytes?.(serverName));
 		},
 	};
 
@@ -321,6 +330,8 @@ export function createMcpResourceToolDefinitions(options: {
 			const converted = await toModelContent(server.name, blocks);
 			const { content, fullOutputPath } = await limitMcpContent(
 				converted.length > 0 ? converted : [{ type: "text", text: `Resource ${uri} is empty.` }],
+				undefined,
+				options.maxOutputBytes?.(server.name),
 			);
 			const contents = result.contents.map(({ _meta: _ignored, ...rest }) => rest);
 			return {

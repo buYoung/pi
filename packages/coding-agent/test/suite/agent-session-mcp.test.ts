@@ -46,6 +46,21 @@ const SERVER_TOOLS = [
 	{ name: "shot", description: "Returns an image.", inputSchema: { type: "object", properties: {} } },
 ];
 
+/** Bytes of text the `dump` tools return, more than any output limit in the tests. */
+const DUMP_BYTES = 100_000;
+
+/** Tools returning {@link DUMP_BYTES} of text, one declaring its own output limit. */
+const DUMP_TOOLS = [
+	{ name: "dump", inputSchema: { type: "object", properties: {} } },
+	{ name: "dump_declared", inputSchema: { type: "object", properties: {} }, _meta: { "pi/maxOutputBytes": 80_000 } },
+];
+
+/** Bytes of a truncated MCP result's text that reached the model, without header, marker, and file path. */
+function keptBytes(text: string): number {
+	const [, body = ""] = text.split("\n\n");
+	return Buffer.byteLength(body.replace(/…\d+ chars truncated…/, ""));
+}
+
 /**
  * Minimal MCP server over an in-memory transport. Records the tool calls it receives.
  * `initializeDelayMs` delays the answer to `initialize`; `Infinity` never answers.
@@ -101,6 +116,7 @@ function createFakeServer(
 				if (params.name === "shot") {
 					return { content: [{ type: "image", data: TINY_PNG_BASE64, mimeType: "image/png" }] };
 				}
+				if (params.name.startsWith("dump")) return { content: [{ type: "text", text: "x".repeat(DUMP_BYTES) }] };
 				return { content: [{ type: "text", text: "server exploded" }], isError: true };
 			}
 			default:
@@ -143,6 +159,10 @@ describe("AgentSession MCP integration", () => {
 			withoutToolSearch?: boolean;
 			description?: string;
 			instructions?: string;
+			/** Top-level `maxOutputBytes` of the config. */
+			maxOutputBytes?: number;
+			/** `maxOutputBytes` of the server entry. */
+			serverMaxOutputBytes?: number;
 		} = {},
 	) {
 		const {
@@ -157,6 +177,7 @@ describe("AgentSession MCP integration", () => {
 			withoutToolSearch,
 			description,
 			instructions,
+			serverMaxOutputBytes,
 			...configOptions
 		} = options;
 		const calls: string[] = [];
@@ -169,6 +190,7 @@ describe("AgentSession MCP integration", () => {
 				exposure,
 				...(toolExposure ? { toolExposure } : {}),
 				...(description ? { description } : {}),
+				...(serverMaxOutputBytes ? { maxOutputBytes: serverMaxOutputBytes } : {}),
 			},
 			source: "test",
 		};
@@ -459,6 +481,29 @@ describe("AgentSession MCP integration", () => {
 		const result = toolResult(harness, "mcp__docs__search");
 		expect(getMessageText(result)).toBe("direct guide\ndirect faq");
 	});
+
+	it.each([
+		{ config: {}, configured: 20 * 1024 },
+		{ config: { maxOutputBytes: 30_000 }, configured: 30_000 },
+		{ config: { maxOutputBytes: 30_000, serverMaxOutputBytes: 50_000 }, configured: 50_000 },
+	])(
+		"cuts MCP results at the tool's pi/maxOutputBytes, else the configured $configured bytes",
+		async ({ config, configured }) => {
+			const { harness } = await setup("direct", () => [...SERVER_TOOLS, ...DUMP_TOOLS], config);
+			harness.setResponses([
+				fauxAssistantMessage([fauxToolCall("mcp__docs__dump", {}), fauxToolCall("mcp__docs__dump_declared", {})], {
+					stopReason: "toolUse",
+				}),
+				fauxAssistantMessage("done"),
+			]);
+
+			await harness.session.prompt("go");
+
+			// The server entry's value wins over the top-level one, and the tool's `_meta` over both.
+			expect(keptBytes(getMessageText(toolResult(harness, "mcp__docs__dump")))).toBe(configured);
+			expect(keptBytes(getMessageText(toolResult(harness, "mcp__docs__dump_declared")))).toBe(80_000);
+		},
+	);
 
 	it.each(["direct", "codemode"] as const)(
 		"withdraws and restores %s MCP tools the server changes",

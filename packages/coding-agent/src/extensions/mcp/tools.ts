@@ -336,6 +336,12 @@ export function createMcpToolDefinition(options: {
 	const annotations = toToolAnnotations(tool);
 	const declared = tool._meta?.[MAX_OUTPUT_BYTES_META_KEY];
 	const declaredMaxOutputBytes = isMaxOutputBytes(declared) ? declared : undefined;
+	// Passed on to extensions as the server sent it. The type is not checked when the list arrives;
+	// it arrived as JSON, so the values of an object are JSON values.
+	const meta =
+		typeof tool._meta === "object" && tool._meta !== null && !Array.isArray(tool._meta)
+			? (tool._meta as Record<string, JsonValue>)
+			: undefined;
 	const label = `${server}/${tool.name}`;
 	return {
 		name: options.name,
@@ -346,6 +352,7 @@ export function createMcpToolDefinition(options: {
 		exposure: toToolExposure(options.exposure),
 		namespace: options.namespace,
 		...(annotations ? { annotations } : {}),
+		...(meta ? { meta } : {}),
 		...createMcpToolRenderers(label),
 		async execute(_toolCallId, params, signal, onUpdate) {
 			const client = await options.getClient();

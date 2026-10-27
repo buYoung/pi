@@ -248,9 +248,11 @@ Text results over the output limit reach the model with their middle removed aro
 }
 ```
 
-`read_mcp_resource` and resource listings of one server use steps 2 to 4; listings of every server use steps 3 and 4. Codemode scripts receive the complete result and can reduce it before returning output to the model.
+`read_mcp_resource`, and `list_mcp_resources` and `list_mcp_resource_templates` called with a `server`, use steps 2 to 4; the two listing tools called without a `server` use steps 3 and 4. Codemode scripts receive the complete result and can reduce it before returning output to the model.
 
 Codemode scripts receive the complete MCP `CallToolResult`, including `content`, `structuredContent`, and `isError`. A result with `isError` resolves inside scripts but is reported as an error for direct calls. `image(result.content[0])` forwards an image block. Server instructions are not part of any tool description; scripts read them with `describeNamespace("mcp__<server>")`, which also returns the server's tool names.
+
+Extensions read the `_meta` of a tool's `tools/list` entry, as the server sent it, from the tool's `meta` in `pi.getAllTools()` (see [Extensions](extensions.md#tool-exposure)).
 
 ## Use resources
 

@@ -1521,6 +1521,7 @@ export class AgentSession {
 			...(definition.namespace ? { namespace: definition.namespace } : {}),
 			...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
 			...(definition.reachesTools ? { reachesTools: definition.reachesTools } : {}),
+			...(definition.meta ? { meta: { ...definition.meta } } : {}),
 			sourceInfo,
 		}));
 	}

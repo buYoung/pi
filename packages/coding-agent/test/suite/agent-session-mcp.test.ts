@@ -505,6 +505,43 @@ describe("AgentSession MCP integration", () => {
 		},
 	);
 
+	it("reports each MCP tool's _meta as the server sent it, and reads only pi/maxOutputBytes for limits", async () => {
+		const meta = { "anthropic/maxResultSizeChars": 100_000, "x/nested": { list: [1] } };
+		const schema = { type: "object", properties: {} };
+		const tools = [
+			...SERVER_TOOLS,
+			...DUMP_TOOLS,
+			{ name: "dump_other", inputSchema: schema, _meta: meta },
+			{ name: "dump_invalid", inputSchema: schema, _meta: { "pi/maxOutputBytes": 0 } },
+			{ name: "text_meta", inputSchema: schema, _meta: "ab" },
+		];
+		const { harness } = await setup("direct", () => tools, { maxOutputBytes: 30_000, resources: true });
+		harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("mcp__docs__dump_other", {}), fauxToolCall("mcp__docs__dump_invalid", {})],
+				{
+					stopReason: "toolUse",
+				},
+			),
+			fauxAssistantMessage("done"),
+		]);
+
+		await harness.session.prompt("go");
+
+		// Other keys and an invalid pi/maxOutputBytes leave the configured limit in place.
+		expect(keptBytes(getMessageText(toolResult(harness, "mcp__docs__dump_other")))).toBe(30_000);
+		expect(keptBytes(getMessageText(toolResult(harness, "mcp__docs__dump_invalid")))).toBe(30_000);
+		const metaOf = (name: string) => harness.session.getAllTools().find((tool) => tool.name === name)?.meta;
+		expect(metaOf("mcp__docs__dump_other")).toEqual(meta);
+		expect(metaOf("mcp__docs__dump_declared")).toEqual({ "pi/maxOutputBytes": 80_000 });
+		expect(metaOf("mcp__docs__dump_invalid")).toEqual({ "pi/maxOutputBytes": 0 });
+		// Tools without `_meta` or with one that is not an object, and the resource tools, have none.
+		expect(metaOf("mcp__docs__search")).toBeUndefined();
+		expect(metaOf("mcp__docs__text_meta")).toBeUndefined();
+		expect(harness.session.getAllTools().some((tool) => tool.name === "read_mcp_resource")).toBe(true);
+		expect(metaOf("read_mcp_resource")).toBeUndefined();
+	});
+
 	it.each(["direct", "codemode"] as const)(
 		"withdraws and restores %s MCP tools the server changes",
 		async (exposure) => {

@@ -624,6 +624,12 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	annotations?: ToolAnnotations;
 
 	/**
+	 * Metadata for extensions, reported by `pi.getAllTools()` and never sent to the model. MCP tools carry the
+	 * `_meta` of their `tools/list` entry as the server sent it.
+	 */
+	meta?: Readonly<Record<string, JsonValue>>;
+
+	/**
 	 * Whether registering the tool activates it. Default: `true` for `direct` and `model-only` tools;
 	 * other exposures are never activated on registration. A tool with `defaultActive: false` is
 	 * activated by naming it in `--tools` or the `defaultTools` setting, or with `setActiveTools()`.
@@ -2125,7 +2131,7 @@ export type GetActiveToolsHandler = () => string[];
 /** Tool info with name, description, parameter schema, prompt guidelines, and source metadata. */
 export type ToolInfo = Pick<
 	ToolDefinition,
-	"name" | "description" | "parameters" | "promptGuidelines" | "reachesTools"
+	"name" | "description" | "parameters" | "promptGuidelines" | "reachesTools" | "meta"
 > & {
 	exposure: ToolExposure;
 	namespace?: ToolNamespace;
